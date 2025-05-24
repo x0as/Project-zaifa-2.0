@@ -1,18 +1,17 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const AiChat = require('../../models/aichat/aiModel');
 const cmdIcons = require('../../UI/icons/commandicons');
-// const checkPermissions = require('../../utils/checkPermissions'); // Permission check removed
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setup-aichat')
         .setDescription('Configure AI chat features for your server')
-        // .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) // Permission restriction removed
+        // No default member permissions; anyone can use it!
         .addSubcommand(subcommand =>
             subcommand
                 .setName('set')
                 .setDescription('Set a channel for AI chat and toggle it on/off')
-                .addChannelOption(option => 
+                .addChannelOption(option =>
                     option.setName('channel')
                         .setDescription('The channel to use for AI chat')
                         .setRequired(true))
@@ -38,12 +37,8 @@ module.exports = {
 
     async execute(interaction) {
         if (interaction.isCommand && interaction.isCommand()) {
-            const guild = interaction.guild;
-            const serverId = interaction.guild.id;
-
-            const subcommand = interaction.options.getSubcommand();
             const guildId = interaction.guild.id;
-            // if (!await checkPermissions(interaction)) return; // Permission check removed
+            const subcommand = interaction.options.getSubcommand();
 
             if (subcommand === 'set') {
                 const channel = interaction.options.getChannel('channel');
@@ -57,9 +52,9 @@ module.exports = {
 
                     let updateMessage;
                     if (existingConfig) {
-                        updateMessage = existingConfig.channelId !== channel.id ? 
-                            `✅ AI Chat has been ${isEnabled ? 'enabled' : 'disabled'} and moved to ${channel}.` :
-                            `✅ AI Chat has been ${isEnabled ? 'enabled' : 'disabled'} in ${channel}.`;
+                        updateMessage = existingConfig.channelId !== channel.id
+                            ? `✅ AI Chat has been ${isEnabled ? 'enabled' : 'disabled'} and moved to ${channel}.`
+                            : `✅ AI Chat has been ${isEnabled ? 'enabled' : 'disabled'} in ${channel}.`;
                     } else {
                         updateMessage = `✅ AI Chat has been ${isEnabled ? 'enabled' : 'disabled'} in ${channel}.`;
                     }
@@ -68,16 +63,19 @@ module.exports = {
                         content: updateMessage,
                         ephemeral: true
                     });
+                    return;
                 } catch (error) {
                     console.error(`Error setting up AI chat for guild ${guildId}:`, error);
-                    await interaction.reply({
-                        content: '❌ There was an error saving your settings. Please try again later.',
-                        ephemeral: true
-                    });
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: '❌ There was an error saving your settings. Please try again later.',
+                            ephemeral: true
+                        });
+                    }
+                    return;
                 }
             } else if (subcommand === 'view') {
                 try {
-                    // Use model method to get config
                     const config = await AiChat.getConfig(guildId);
 
                     if (!config) {
@@ -92,17 +90,21 @@ module.exports = {
 
                     await interaction.reply({
                         content: `**AI Chat Configuration**\n` +
-                            `**Channel:** ${channel}\n` +
-                            `**Status:** ${config.isEnabled ? '✅ Enabled' : '❌ Disabled'}\n` +
-                            `**Last Updated:** ${config.updatedAt?.toLocaleString() || 'Unknown'}\n`,
+                                 `**Channel:** ${channel}\n` +
+                                 `**Status:** ${config.isEnabled ? '✅ Enabled' : '❌ Disabled'}\n` +
+                                 `**Last Updated:** ${config.updatedAt?.toLocaleString() || 'Unknown'}\n`,
                         ephemeral: true
                     });
+                    return;
                 } catch (error) {
                     console.error(`Error fetching AI chat config for guild ${guildId}:`, error);
-                    await interaction.reply({
-                        content: '❌ There was an error retrieving your settings. Please try again later.',
-                        ephemeral: true
-                    });
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: '❌ There was an error retrieving your settings. Please try again later.',
+                            ephemeral: true
+                        });
+                    }
+                    return;
                 }
             } else if (subcommand === 'disable') {
                 try {
@@ -122,19 +124,23 @@ module.exports = {
                         content: `✅ AI Chat has been disabled for this server.`,
                         ephemeral: true
                     });
+                    return;
                 } catch (error) {
                     console.error(`Error disabling AI chat for guild ${guildId}:`, error);
-                    await interaction.reply({
-                        content: '❌ There was an error updating your settings. Please try again later.',
-                        ephemeral: true
-                    });
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: '❌ There was an error updating your settings. Please try again later.',
+                            ephemeral: true
+                        });
+                    }
+                    return;
                 }
             }
         } else {
             const embed = new EmbedBuilder()
                 .setColor('#3498db')
-                .setAuthor({ 
-                    name: "Alert!", 
+                .setAuthor({
+                    name: "Alert!",
                     iconURL: cmdIcons.dotIcon,
                     url: "https://discord.gg/xQF9f9yUEM"
                 })
