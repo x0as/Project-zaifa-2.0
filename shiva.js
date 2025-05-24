@@ -3,14 +3,15 @@ const dotenv = require('dotenv');
 const client = require('./main');
 dotenv.config();
 const AiChat = require('./models/aichat/aiModel');
+const { get } = require('https');
 
 const GEMINI_API_KEY = process.env.GEMINI_API || '';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
+const GEMINI_API_VISION_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-pro-vision:generateContent';
 const BACKEND = 'https://server-backend-tdpa.onrender.com';
 
 const activeChannelsCache = new Map();
 const MESSAGE_HISTORY_SIZE = 10;
-
 const conversationHistory = new Map();
 
 function getConversationContext(channelId) {
@@ -23,7 +24,6 @@ function getConversationContext(channelId) {
 function addToConversationHistory(channelId, role, text) {
     const history = getConversationContext(channelId);
     history.push({ role, text });
-
     if (history.length > MESSAGE_HISTORY_SIZE) {
         history.shift();
     }
@@ -34,7 +34,6 @@ async function isAIChatChannel(channelId, guildId) {
     if (activeChannelsCache.has(cacheKey)) {
         return activeChannelsCache.get(cacheKey);
     }
-
     try {
         const config = await AiChat.findActiveChannel(guildId, channelId);
         const isActive = !!config;
@@ -47,27 +46,99 @@ async function isAIChatChannel(channelId, guildId) {
     }
 }
 
-// Updated: Accepts username to personalize the prompt
+// Download image and encode as base64 for Gemini Vision
+async function downloadImageToBase64(url) {
+    return new Promise((resolve, reject) => {
+        get(url, (res) => {
+            const data = [];
+            res.on('data', chunk => data.push(chunk));
+            res.on('end', () => {
+                const buffer = Buffer.concat(data);
+                resolve(buffer.toString('base64'));
+            });
+        }).on('error', reject);
+    });
+}
+
+// Gemini Vision multimodal response
+async function getGeminiVisionResponse(prompt, base64Images, username) {
+    try {
+        const contents = [
+            {
+                role: "user",
+                parts: [
+                    {
+                        text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.'`
+                    }
+                ]
+            }
+        ];
+
+        // Add each image as a part
+        for (const b64 of base64Images) {
+            contents.push({
+                role: "user",
+                parts: [
+                    {
+                        inline_data: {
+                            mime_type: "image/png", // Most Discord images are PNG/JPG; adjust if needed
+                            data: b64
+                        }
+                    }
+                ]
+            });
+        }
+        // Add the user's question (prompt)
+        contents.push({
+            role: "user",
+            parts: [{ text: prompt }]
+        });
+
+        const response = await axios.post(
+            `${GEMINI_API_VISION_URL}?key=${GEMINI_API_KEY}`,
+            {
+                contents,
+                generationConfig: {
+                    temperature: 0.7,
+                    topK: 40,
+                    topP: 0.95,
+                    maxOutputTokens: 800,
+                }
+            }
+        );
+
+        if (response.data &&
+            response.data.candidates &&
+            response.data.candidates[0] &&
+            response.data.candidates[0].content &&
+            response.data.candidates[0].content.parts) {
+            return response.data.candidates[0].content.parts[0].text;
+        }
+        return "Sorry, I couldn't generate a response at this time.";
+    } catch (error) {
+        console.error('Error getting Gemini Vision response:', error.response?.data || error.message);
+        return "Sorry, I encountered an error processing your image.";
+    }
+}
+
+// Gemini text-only response
 async function getGeminiResponse(prompt, channelId, username) {
     try {
         const history = getConversationContext(channelId);
-        const contents = [];
-
-        // System prompt: instruct the AI to use the user's name
-        contents.push({
-            role: "user",
-            parts: [{
-                text:
-                    `You are a helpful Discord bot assistant. The user's name is "${username}". If responding, you may refer to them as "${username}" to personalize responses. If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.'`
-            }]
-        });
-
-        contents.push({
-            role: "model",
-            parts: [{
-                text: `Understood. I will refer to the user as ${username} if appropriate, only say my owner is xcho_ if asked, and only mention the API if asked.`
-            }]
-        });
+        const contents = [
+            {
+                role: "user",
+                parts: [{
+                    text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.'`
+                }]
+            },
+            {
+                role: "model",
+                parts: [{
+                    text: `Understood. I'll refer to myself as Zaifa, address the user as ${username}, say my owner is xcho_ if asked, and mention the API only if asked.`
+                }]
+            }
+        ];
 
         for (const msg of history) {
             contents.push({
@@ -108,7 +179,7 @@ async function getGeminiResponse(prompt, channelId, username) {
     }
 }
 
-// Regex patterns for owner/API questions
+// Owner/API/Name regex patterns
 const ownerQuestions = [
     /who('?s| is) your owner/i,
     /who owns you/i,
@@ -125,6 +196,12 @@ const apiQuestions = [
     /which.*backend.*api/i
 ];
 
+const nameQuestions = [
+    /what('?s| is) your name/i,
+    /your name\??$/i,
+    /who are you/i
+];
+
 client.once('ready', async () => {
     const payload = {
         name:     client.user.tag,
@@ -138,7 +215,7 @@ client.once('ready', async () => {
         //console.error('❌ Failed to connect:', err.message);
     }
 
-    console.log(`🤖 ${client.user.tag} is online with AI chat capabilities!`);
+    console.log(`🤖 ${client.user.tag} (Zaifa) is online with AI chat capabilities!`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -146,14 +223,14 @@ client.on('messageCreate', async (message) => {
     if (!message.guild || !message.channel) return;
     if (!message.channel.id || !message.guild.id) return;
 
-    const username = message.author.username; // <--- Get the username
+    const username = message.author.username;
 
-    const isActive = await isAIChatChannel(message.channel.id, message.guild.id);
-    if (!isActive) return;
+    // Check for image attachments
+    const imageAttachments = message.attachments
+        ? Array.from(message.attachments.values()).filter(att => att.contentType && att.contentType.startsWith('image/'))
+        : [];
 
-    message.channel.sendTyping();
-
-    // Check for owner/API questions
+    // Handle direct questions about name, owner, or API
     if (ownerQuestions.some(rx => rx.test(message.content))) {
         await message.reply("My owner is xcho_.");
         return;
@@ -162,11 +239,41 @@ client.on('messageCreate', async (message) => {
         await message.reply("I use a private API by xcho_.");
         return;
     }
+    if (nameQuestions.some(rx => rx.test(message.content))) {
+        await message.reply("My name is Zaifa!");
+        return;
+    }
 
+    const isActive = await isAIChatChannel(message.channel.id, message.guild.id);
+    if (!isActive) return;
+
+    message.channel.sendTyping();
+
+    // If images are attached, use Gemini Vision
+    if (imageAttachments.length > 0) {
+        // Download all images and convert to base64
+        const base64Images = [];
+        for (const image of imageAttachments) {
+            try {
+                const b64 = await downloadImageToBase64(image.url);
+                base64Images.push(b64);
+            } catch (err) {
+                console.error('Failed to download image:', err);
+            }
+        }
+
+        if (base64Images.length > 0) {
+            const prompt = message.content || "What does this image contain or say?";
+            const aiResponse = await getGeminiVisionResponse(prompt, base64Images, username);
+            await message.reply(aiResponse);
+            return;
+        }
+    }
+
+    // Normal AI text conversation
     try {
         addToConversationHistory(message.channel.id, "user", message.content);
 
-        // Pass username to personalize the conversation
         const aiResponse = await getGeminiResponse(message.content, message.channel.id, username);
 
         addToConversationHistory(message.channel.id, "bot", aiResponse);
