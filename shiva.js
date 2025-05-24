@@ -47,24 +47,25 @@ async function isAIChatChannel(channelId, guildId) {
     }
 }
 
-async function getGeminiResponse(prompt, channelId) {
+// Updated: Accepts username to personalize the prompt
+async function getGeminiResponse(prompt, channelId, username) {
     try {
         const history = getConversationContext(channelId);
         const contents = [];
 
-        // System prompt: instruct the AI about special responses
+        // System prompt: instruct the AI to use the user's name
         contents.push({
             role: "user",
             parts: [{
                 text:
-                    "You are a helpful Discord bot assistant. If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.' For all other questions, do not mention your owner or the API unless directly asked. Keep your responses concise and friendly. Don't use markdown formatting."
+                    `You are a helpful Discord bot assistant. The user's name is "${username}". If responding, you may refer to them as "${username}" to personalize responses. If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.'`
             }]
         });
 
         contents.push({
             role: "model",
             parts: [{
-                text: "Understood. I will only say my owner is xcho_ if asked, and only mention the API if asked."
+                text: `Understood. I will refer to the user as ${username} if appropriate, only say my owner is xcho_ if asked, and only mention the API if asked.`
             }]
         });
 
@@ -142,7 +143,10 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-    if (!message.guild) return;
+    if (!message.guild || !message.channel) return;
+    if (!message.channel.id || !message.guild.id) return;
+
+    const username = message.author.username; // <--- Get the username
 
     const isActive = await isAIChatChannel(message.channel.id, message.guild.id);
     if (!isActive) return;
@@ -162,7 +166,8 @@ client.on('messageCreate', async (message) => {
     try {
         addToConversationHistory(message.channel.id, "user", message.content);
 
-        const aiResponse = await getGeminiResponse(message.content, message.channel.id);
+        // Pass username to personalize the conversation
+        const aiResponse = await getGeminiResponse(message.content, message.channel.id, username);
 
         addToConversationHistory(message.channel.id, "bot", aiResponse);
 
