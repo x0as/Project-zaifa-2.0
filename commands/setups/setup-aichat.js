@@ -1,13 +1,13 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const AiChat = require('../../models/aichat/aiModel');
 const cmdIcons = require('../../UI/icons/commandicons');
-const checkPermissions = require('../../utils/checkPermissions');
+// const checkPermissions = require('../../utils/checkPermissions'); // Permission check removed
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setup-aichat')
         .setDescription('Configure AI chat features for your server')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        // .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild) // Permission restriction removed
         .addSubcommand(subcommand =>
             subcommand
                 .setName('set')
@@ -40,23 +40,21 @@ module.exports = {
         if (interaction.isCommand && interaction.isCommand()) {
             const guild = interaction.guild;
             const serverId = interaction.guild.id;
-        
-            
+
             const subcommand = interaction.options.getSubcommand();
             const guildId = interaction.guild.id;
-            if (!await checkPermissions(interaction)) return;
+            // if (!await checkPermissions(interaction)) return; // Permission check removed
+
             if (subcommand === 'set') {
                 const channel = interaction.options.getChannel('channel');
                 const status = interaction.options.getString('status');
                 const isEnabled = status === 'on';
 
                 try {
-                 
                     const existingConfig = await AiChat.getConfig(guildId);
-                    
-                 
+
                     await AiChat.setConfig(guildId, channel.id, isEnabled, interaction.user.id);
-                    
+
                     let updateMessage;
                     if (existingConfig) {
                         updateMessage = existingConfig.channelId !== channel.id ? 
@@ -65,7 +63,7 @@ module.exports = {
                     } else {
                         updateMessage = `✅ AI Chat has been ${isEnabled ? 'enabled' : 'disabled'} in ${channel}.`;
                     }
-                    
+
                     await interaction.reply({
                         content: updateMessage,
                         ephemeral: true
@@ -81,7 +79,7 @@ module.exports = {
                 try {
                     // Use model method to get config
                     const config = await AiChat.getConfig(guildId);
-                    
+
                     if (!config) {
                         await interaction.reply({
                             content: '❓ AI Chat has not been set up for this server yet.',
@@ -91,7 +89,7 @@ module.exports = {
                     }
 
                     const channel = interaction.guild.channels.cache.get(config.channelId) || 'Unknown channel';
-                    
+
                     await interaction.reply({
                         content: `**AI Chat Configuration**\n` +
                             `**Channel:** ${channel}\n` +
@@ -108,9 +106,8 @@ module.exports = {
                 }
             } else if (subcommand === 'disable') {
                 try {
-              
                     const config = await AiChat.getConfig(guildId);
-                    
+
                     if (!config) {
                         await interaction.reply({
                             content: '❓ AI Chat has not been set up for this server yet.',
@@ -118,9 +115,9 @@ module.exports = {
                         });
                         return;
                     }
-                    
+
                     await AiChat.disableChat(guildId, interaction.user.id);
-                    
+
                     await interaction.reply({
                         content: `✅ AI Chat has been disabled for this server.`,
                         ephemeral: true
