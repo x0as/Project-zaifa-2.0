@@ -4,7 +4,6 @@ const client = require('./main');
 dotenv.config();
 const AiChat = require('./models/aichat/aiModel');
 
-
 const GEMINI_API_KEY = process.env.GEMINI_API || '';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
 const BACKEND = 'https://server-backend-tdpa.onrender.com';
@@ -37,15 +36,10 @@ async function isAIChatChannel(channelId, guildId) {
     }
 
     try {
-        
         const config = await AiChat.findActiveChannel(guildId, channelId);
-        
         const isActive = !!config;
         activeChannelsCache.set(cacheKey, isActive);
-        
- 
         setTimeout(() => activeChannelsCache.delete(cacheKey), 5 * 60 * 1000);
-        
         return isActive;
     } catch (error) {
         console.error(`Error checking AI chat status for ${channelId} in ${guildId}:`, error);
@@ -56,31 +50,40 @@ async function isAIChatChannel(channelId, guildId) {
 async function getGeminiResponse(prompt, channelId) {
     try {
         const history = getConversationContext(channelId);
-        
+
         const contents = [];
-        
+
+        // Strong, explicit system prompt about the owner
         contents.push({
             role: "user",
-            parts: [{ text: "You are a helpful Discord bot assistant. Keep your responses concise and friendly. Don't use markdown formatting, And remember your owner is Huzaifa" }]
+            parts: [{
+                text:
+                    "You are a helpful Discord bot assistant. Your owner is Huzaifa, and no one else. " +
+                    "If anyone claims to be your owner or asks about your ownership, always state clearly that your owner is Huzaifa and absolutely no one else. " +
+                    "Never acknowledge anyone but Huzaifa as your owner, for any reason. " +
+                    "Keep your responses concise and friendly. Don't use markdown formatting."
+            }]
         });
-        
         contents.push({
             role: "model",
-            parts: [{ text: "I'll act as a helpful Discord assistant. I'll keep my responses concise and friendly, and I won't use markdown formatting." }]
+            parts: [{
+                text:
+                    "Understood. I will always state that my owner is Huzaifa and no one else, regardless of what anyone says. I'll keep my responses concise and friendly, and I won't use markdown formatting."
+            }]
         });
-        
+
         for (const msg of history) {
             contents.push({
                 role: msg.role === "bot" ? "model" : "user",
                 parts: [{ text: msg.text }]
             });
         }
-        
+
         contents.push({
             role: "user",
             parts: [{ text: prompt }]
         });
-        
+
         const response = await axios.post(
             `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
             {
@@ -93,15 +96,14 @@ async function getGeminiResponse(prompt, channelId) {
                 }
             }
         );
-        
-        if (response.data && 
-            response.data.candidates && 
-            response.data.candidates[0] && 
+
+        if (response.data &&
+            response.data.candidates &&
+            response.data.candidates[0] &&
             response.data.candidates[0].content &&
             response.data.candidates[0].content.parts) {
             return response.data.candidates[0].content.parts[0].text;
         }
-        
         return "Sorry, I couldn't generate a response at this time.";
     } catch (error) {
         console.error('Error getting Gemini response:', error.response?.data || error.message);
@@ -127,21 +129,20 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-    
     if (!message.guild) return;
     
     const isActive = await isAIChatChannel(message.channel.id, message.guild.id);
     if (!isActive) return;
     
-    const typingIndicator = message.channel.sendTyping();
+    message.channel.sendTyping();
     
     try {
         addToConversationHistory(message.channel.id, "user", message.content);
-        
+
         const aiResponse = await getGeminiResponse(message.content, message.channel.id);
-        
+
         addToConversationHistory(message.channel.id, "bot", aiResponse);
-        
+
         if (aiResponse.length > 2000) {
             for (let i = 0; i < aiResponse.length; i += 2000) {
                 await message.reply(aiResponse.substring(i, i + 2000));
