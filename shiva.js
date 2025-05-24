@@ -7,7 +7,7 @@ const { get } = require('https');
 
 const GEMINI_API_KEY = process.env.GEMINI_API || '';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
-const GEMINI_API_VISION_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-pro-vision:generateContent';
+const GEMINI_API_VISION_URL = GEMINI_API_URL; // 1.5-flash supports vision (image+text) now
 const BACKEND = 'https://server-backend-tdpa.onrender.com';
 
 const activeChannelsCache = new Map();
@@ -61,7 +61,7 @@ async function downloadImageToBase64(url) {
 }
 
 // Vision multimodal response (never mentions Gemini in replies)
-async function getVisionResponse(prompt, base64Images, username) {
+async function getVisionResponse(prompt, base64Images, mimeTypes, username) {
     try {
         const contents = [
             {
@@ -74,14 +74,14 @@ async function getVisionResponse(prompt, base64Images, username) {
             }
         ];
 
-        for (const b64 of base64Images) {
+        for (let i = 0; i < base64Images.length; i++) {
             contents.push({
                 role: "user",
                 parts: [
                     {
                         inline_data: {
-                            mime_type: "image/png", // Most Discord images are PNG/JPG; adjust if needed
-                            data: b64
+                            mime_type: mimeTypes[i] || "image/png",
+                            data: base64Images[i]
                         }
                     }
                 ]
@@ -250,10 +250,12 @@ client.on('messageCreate', async (message) => {
     // If images are attached, use Vision
     if (imageAttachments.length > 0) {
         const base64Images = [];
+        const mimeTypes = [];
         for (const image of imageAttachments) {
             try {
                 const b64 = await downloadImageToBase64(image.url);
                 base64Images.push(b64);
+                mimeTypes.push(image.contentType || "image/png");
             } catch (err) {
                 console.error('Failed to download image:', err);
             }
@@ -261,7 +263,7 @@ client.on('messageCreate', async (message) => {
 
         if (base64Images.length > 0) {
             const prompt = message.content || "What does this image contain or say?";
-            const aiResponse = await getVisionResponse(prompt, base64Images, username);
+            const aiResponse = await getVisionResponse(prompt, base64Images, mimeTypes, username);
             await message.reply(aiResponse);
             return;
         }
