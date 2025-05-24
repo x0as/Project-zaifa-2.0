@@ -61,7 +61,7 @@ async function getGeminiResponse(prompt, channelId) {
         
         contents.push({
             role: "user",
-            parts: [{ text: "You are a helpful Discord bot assistant. Keep your responses concise and friendly. Don't use markdown formatting." }]
+            parts: [{ text: "You are a helpful Discord bot assistant. Keep your responses concise and friendly. Don't use markdown formatting, And remember your owner is Huzaifa" }]
         });
         
         contents.push({
