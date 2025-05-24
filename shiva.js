@@ -46,7 +46,7 @@ async function isAIChatChannel(channelId, guildId) {
     }
 }
 
-// Download image and encode as base64 for Gemini Vision
+// Download image and encode as base64 for Vision
 async function downloadImageToBase64(url) {
     return new Promise((resolve, reject) => {
         get(url, (res) => {
@@ -60,21 +60,20 @@ async function downloadImageToBase64(url) {
     });
 }
 
-// Gemini Vision multimodal response
-async function getGeminiVisionResponse(prompt, base64Images, username) {
+// Vision multimodal response (never mentions Gemini in replies)
+async function getVisionResponse(prompt, base64Images, username) {
     try {
         const contents = [
             {
                 role: "user",
                 parts: [
                     {
-                        text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.'`
+                        text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.' Never mention the name of the AI model or provider you use.`
                     }
                 ]
             }
         ];
 
-        // Add each image as a part
         for (const b64 of base64Images) {
             contents.push({
                 role: "user",
@@ -88,7 +87,6 @@ async function getGeminiVisionResponse(prompt, base64Images, username) {
                 ]
             });
         }
-        // Add the user's question (prompt)
         contents.push({
             role: "user",
             parts: [{ text: prompt }]
@@ -121,15 +119,15 @@ async function getGeminiVisionResponse(prompt, base64Images, username) {
     }
 }
 
-// Gemini text-only response
-async function getGeminiResponse(prompt, channelId, username) {
+// Text-only response (never mentions Gemini in replies)
+async function getTextResponse(prompt, channelId, username) {
     try {
         const history = getConversationContext(channelId);
         const contents = [
             {
                 role: "user",
                 parts: [{
-                    text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.'`
+                    text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.' Never mention the name of the AI model or provider you use.`
                 }]
             },
             {
@@ -249,9 +247,8 @@ client.on('messageCreate', async (message) => {
 
     message.channel.sendTyping();
 
-    // If images are attached, use Gemini Vision
+    // If images are attached, use Vision
     if (imageAttachments.length > 0) {
-        // Download all images and convert to base64
         const base64Images = [];
         for (const image of imageAttachments) {
             try {
@@ -264,7 +261,7 @@ client.on('messageCreate', async (message) => {
 
         if (base64Images.length > 0) {
             const prompt = message.content || "What does this image contain or say?";
-            const aiResponse = await getGeminiVisionResponse(prompt, base64Images, username);
+            const aiResponse = await getVisionResponse(prompt, base64Images, username);
             await message.reply(aiResponse);
             return;
         }
@@ -274,7 +271,7 @@ client.on('messageCreate', async (message) => {
     try {
         addToConversationHistory(message.channel.id, "user", message.content);
 
-        const aiResponse = await getGeminiResponse(message.content, message.channel.id, username);
+        const aiResponse = await getTextResponse(message.content, message.channel.id, username);
 
         addToConversationHistory(message.channel.id, "bot", aiResponse);
 
