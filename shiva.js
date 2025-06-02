@@ -14,6 +14,14 @@ const activeChannelsCache = new Map();
 const MESSAGE_HISTORY_SIZE = 10;
 const conversationHistory = new Map();
 
+// ==== SANITIZE FUNCTION ====
+function sanitizeReply(content) {
+    content = content.replace(/@everyone/g, 'everyone');
+    content = content.replace(/@here/g, 'here');
+    content = content.replace(/<@&?\d+>/g, '[ping removed]');
+    return content;
+}
+
 function getConversationContext(channelId) {
     if (!conversationHistory.has(channelId)) {
         conversationHistory.set(channelId, []);
@@ -68,7 +76,7 @@ async function getVisionResponse(prompt, base64Images, mimeTypes, username) {
                 role: "user",
                 parts: [
                     {
-                        text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.' If anyone asks why your name is Zaifa, or about the origin of your name, explain that your name comes from your owner's name, Huzaifa. Never mention the name of the AI model or provider you use.`
+                        text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". Never mention Google or Gemini in your replies.`
                     }
                 ]
             }
@@ -127,13 +135,13 @@ async function getTextResponse(prompt, channelId, username) {
             {
                 role: "user",
                 parts: [{
-                    text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.' If anyone asks why your name is Zaifa, or about the origin of your name, explain that your name comes from your owner's name, Huzaifa. Never mention the name of the AI model or provider you use.`
+                    text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". Never mention Google or Gemini in your replies.`
                 }]
             },
             {
                 role: "model",
                 parts: [{
-                    text: `Understood. I'll refer to myself as Zaifa, address the user as ${username}, say my owner is xcho_ if asked, mention the API only if asked, and explain my name is from Huzaifa if asked about its origin.`
+                    text: `Understood. I'll refer to myself as Zaifa, address the user as ${username}, say my owner is xcho_ if asked, mention the API only if asked, and explain my name is from Huzaifa.`
                 }]
             }
         ];
@@ -240,19 +248,19 @@ client.on('messageCreate', async (message) => {
 
     // Handle direct questions about name, owner, API, or name origin
     if (ownerQuestions.some(rx => rx.test(message.content))) {
-        await message.reply("My owner is xcho_.");
+        await message.reply(sanitizeReply("My owner is xcho_."));
         return;
     }
     if (apiQuestions.some(rx => rx.test(message.content))) {
-        await message.reply("I use a private API by xcho_.");
+        await message.reply(sanitizeReply("I use a private API by xcho_."));
         return;
     }
     if (nameQuestions.some(rx => rx.test(message.content))) {
-        await message.reply("My name is Zaifa!");
+        await message.reply(sanitizeReply("My name is Zaifa!"));
         return;
     }
     if (nameOriginQuestions.some(rx => rx.test(message.content))) {
-        await message.reply("My name comes from my owner's name, Huzaifa. It's a shortened version chosen as a tribute.");
+        await message.reply(sanitizeReply("My name comes from my owner's name, Huzaifa. It's a shortened version chosen as a tribute."));
         return;
     }
 
@@ -278,7 +286,7 @@ client.on('messageCreate', async (message) => {
         if (base64Images.length > 0) {
             const prompt = message.content || "What does this image contain or say?";
             const aiResponse = await getVisionResponse(prompt, base64Images, mimeTypes, username);
-            await message.reply(aiResponse);
+            await message.reply(sanitizeReply(aiResponse));
             return;
         }
     }
@@ -293,14 +301,14 @@ client.on('messageCreate', async (message) => {
 
         if (aiResponse.length > 2000) {
             for (let i = 0; i < aiResponse.length; i += 2000) {
-                await message.reply(aiResponse.substring(i, i + 2000));
+                await message.reply(sanitizeReply(aiResponse.substring(i, i + 2000)));
             }
         } else {
-            await message.reply(aiResponse);
+            await message.reply(sanitizeReply(aiResponse));
         }
     } catch (error) {
         console.error('Error in AI chat response:', error);
-        await message.reply("Sorry, I encountered an error processing your message.");
+        await message.reply(sanitizeReply("Sorry, I encountered an error processing your message."));
     }
 });
 
