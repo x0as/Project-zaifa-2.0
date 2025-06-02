@@ -181,6 +181,24 @@ async function getTextResponse(prompt, channelId, username) {
     }
 }
 
+// isAIChatChannel - make sure this is defined before use!
+async function isAIChatChannel(channelId, guildId) {
+    const cacheKey = `${guildId}-${channelId}`;
+    if (activeChannelsCache.has(cacheKey)) {
+        return activeChannelsCache.get(cacheKey);
+    }
+    try {
+        const config = await AiChat.findActiveChannel(guildId, channelId);
+        const isActive = !!config;
+        activeChannelsCache.set(cacheKey, isActive);
+        setTimeout(() => activeChannelsCache.delete(cacheKey), 5 * 60 * 1000);
+        return isActive;
+    } catch (error) {
+        console.error(`Error checking AI chat status for ${channelId} in ${guildId}:`, error);
+        return false;
+    }
+}
+
 // Owner/API/Name regex patterns
 const ownerQuestions = [
     /who('?s| is) your owner/i,
