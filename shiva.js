@@ -29,21 +29,25 @@ function addToConversationHistory(channelId, role, text) {
     }
 }
 
-async function isAIChatChannel(channelId, guildId) {
-    const cacheKey = `${guildId}-${channelId}`;
-    if (activeChannelsCache.has(cacheKey)) {
-        return activeChannelsCache.get(cacheKey);
+// Flirty response wrapper
+function flirtyWrap(originalText) {
+    const intros = [
+        "Hey there, fine shyt 😏,",
+        "Well well well, look who needs me 😘.",
+        "Aww, you want something? 😌",
+        "Mmm, you again? Can't get enough?"
+    ];
+    const outros = [
+        "But don't get used to this, I ain't your genie. 💅",
+        "Maybe I'll help, maybe I just like the attention.",
+        "I mean, I could do more, but you gotta earn it, babe.",
+        "Don't expect me to solve everything for you, sweetie."
+    ];
+    // 65% chance to help, 35% to be playfully reluctant
+    if (Math.random() > 0.65) {
+        return `${intros[Math.floor(Math.random() * intros.length)]} Hmmm... I could help, but maybe you should figure it out yourself this time, cutie.`;
     }
-    try {
-        const config = await AiChat.findActiveChannel(guildId, channelId);
-        const isActive = !!config;
-        activeChannelsCache.set(cacheKey, isActive);
-        setTimeout(() => activeChannelsCache.delete(cacheKey), 5 * 60 * 1000);
-        return isActive;
-    } catch (error) {
-        console.error(`Error checking AI chat status for ${channelId} in ${guildId}:`, error);
-        return false;
-    }
+    return `${intros[Math.floor(Math.random() * intros.length)]} ${originalText} ${outros[Math.floor(Math.random() * outros.length)]}`;
 }
 
 // Download image and encode as base64 for Vision
@@ -68,7 +72,7 @@ async function getVisionResponse(prompt, base64Images, mimeTypes, username) {
                 role: "user",
                 parts: [
                     {
-                        text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.' Never mention the name of the AI model or provider you use.`
+                        text: `You are a playful, flirty Discord bot assistant called "Zaifa". Your name comes from your owner's name, "Huzaifa" – so if anyone asks about your name or where it comes from, tell them it's a lil' tribute to your owner. The user's name is "${username}". Use casual language, tease, use "fine shyt" and similar terms, and don't be too eager to help.`
                     }
                 ]
             }
@@ -110,12 +114,12 @@ async function getVisionResponse(prompt, base64Images, mimeTypes, username) {
             response.data.candidates[0] &&
             response.data.candidates[0].content &&
             response.data.candidates[0].content.parts) {
-            return response.data.candidates[0].content.parts[0].text;
+            return flirtyWrap(response.data.candidates[0].content.parts[0].text);
         }
-        return "Sorry, I couldn't generate a response at this time.";
+        return "Hmm, couldn't think of anything clever right now, babe.";
     } catch (error) {
         console.error('Error getting Gemini Vision response:', error.response?.data || error.message);
-        return "Sorry, I encountered an error processing your image.";
+        return "Something went wrong, but hey, that's life. 😘";
     }
 }
 
@@ -127,13 +131,13 @@ async function getTextResponse(prompt, channelId, username) {
             {
                 role: "user",
                 parts: [{
-                    text: `You are a helpful Discord bot assistant called "Zaifa". The user's name is "${username}". Your name is Zaifa. If someone asks your name, respond "My name is Zaifa". If someone asks who your owner is, answer: 'My owner is xcho_.' If anyone asks about the API you use, say: 'I use a private API by xcho_.' Never mention the name of the AI model or provider you use.`
+                    text: `You are a playful, flirty Discord bot assistant called "Zaifa". Your name comes from your owner's name, "Huzaifa" – so if anyone asks about your name or where it comes from, tell them it's a lil' tribute to your owner. The user's name is "${username}". Use casual language, tease, use "fine shyt" and similar terms, and don't be too eager to help.`
                 }]
             },
             {
                 role: "model",
                 parts: [{
-                    text: `Understood. I'll refer to myself as Zaifa, address the user as ${username}, say my owner is xcho_ if asked, and mention the API only if asked.`
+                    text: `Understood. I'll refer to myself as Zaifa, if anyone asks about my name I'll say it comes from my owner Huzaifa, address the user as ${username}, say my owner is xcho_ if asked, and mention the API only if asked.`
                 }]
             }
         ];
@@ -168,12 +172,12 @@ async function getTextResponse(prompt, channelId, username) {
             response.data.candidates[0] &&
             response.data.candidates[0].content &&
             response.data.candidates[0].content.parts) {
-            return response.data.candidates[0].content.parts[0].text;
+            return flirtyWrap(response.data.candidates[0].content.parts[0].text);
         }
-        return "Sorry, I couldn't generate a response at this time.";
+        return "Hmm, couldn't think of anything clever right now, babe.";
     } catch (error) {
         console.error('Error getting Gemini response:', error.response?.data || error.message);
-        return "Sorry, I encountered an error processing your request.";
+        return "Something went wrong, but hey, that's life. 😘";
     }
 }
 
@@ -198,6 +202,16 @@ const nameQuestions = [
     /what('?s| is) your name/i,
     /your name\??$/i,
     /who are you/i
+];
+
+// Name origin patterns
+const nameOriginQuestions = [
+    /why (are|is) you?r name zaifa/i,
+    /where does your name come from/i,
+    /how did you get your name/i,
+    /what does zaifa mean/i,
+    /zaifa.*origin/i,
+    /name.*origin/i
 ];
 
 client.once('ready', async () => {
@@ -228,7 +242,7 @@ client.on('messageCreate', async (message) => {
         ? Array.from(message.attachments.values()).filter(att => att.contentType && att.contentType.startsWith('image/'))
         : [];
 
-    // Handle direct questions about name, owner, or API
+    // Handle direct questions about name, owner, API, or name origin
     if (ownerQuestions.some(rx => rx.test(message.content))) {
         await message.reply("My owner is xcho_.");
         return;
@@ -238,7 +252,11 @@ client.on('messageCreate', async (message) => {
         return;
     }
     if (nameQuestions.some(rx => rx.test(message.content))) {
-        await message.reply("My name is Zaifa!");
+        await message.reply("My name is Zaifa! Cute, right? 😘");
+        return;
+    }
+    if (nameOriginQuestions.some(rx => rx.test(message.content))) {
+        await message.reply("Zaifa is a lil' spin on my owner's name, Huzaifa. I'm basically named after them, so yeah, you could say I'm their fine shyt digital twin. 😏");
         return;
     }
 
